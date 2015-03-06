@@ -1,0 +1,188 @@
+{% load staticfiles %}
+<!DOCTYPE html>
+<html>
+<head>
+    <title></title>
+    <script src="http://code.jquery.com/jquery-2.1.1.min.js"></script>
+    <script src="http://malsup.github.com/jquery.form.js"></script>
+
+    <style>
+
+        #thumbnail-container {
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            -khtml-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            -o-user-select: none;
+            user-select: none;
+        }
+
+        #thumbnail-container * {
+            position: absolute;
+        }
+
+        #overlay {
+            background-color: rgba(0, 0, 50, 0.5);
+        }
+
+        #cropped {
+            cursor: pointer;
+            background-size: cover;
+            background-repeat: no-repeat;
+        }
+
+    </style>
+
+    <script>
+
+        $(function () {
+
+            var pollInterval = null;
+
+            var image = $('#thumbnail').get(0),
+                    dragging = false,
+                    dragStart = 0;
+
+            function getPos() {
+                return parseInt($('#crop-y').val() || 0);
+            }
+
+            function setPos(n) {
+                $('#crop-y').val(n);
+            }
+
+            function refresh() {
+
+                var pos = getPos();
+
+                $('#cropped').css({
+                    top: pos,
+                    'background-position': '0px ' + (-pos) + 'px'
+                });
+
+            }
+
+            function between(value, min, max) {
+
+                return Math.max(Math.min(value, max), min);
+
+            }
+
+            image.onload = function () {
+                $('#overlay').css({
+                    width: image.width,
+                    height: image.height
+                });
+
+                var croppedHeight = image.width / 16 * 9;
+
+                $('#thumbnail-container').css({
+                    width: image.width,
+                    height: image.height
+                });
+                $('#cropped')
+                        .css({
+                            width: image.width,
+                            height: croppedHeight,
+                            'background-image': "url(" + image.src + ")"
+                        })
+                        .on('mousedown', function (e) {
+                            dragging = true;
+                            dragStart = e.clientY;
+                        })
+                        .on('mouseout', function (e) {
+                            if (e.which != 1) dragging = false;
+                        })
+                        .on('mousemove', function (e) {
+                            if (!dragging) return;
+
+                            var pos = getPos();
+                            setPos(between(pos + e.clientY - dragStart, 0, image.height - croppedHeight));
+                            refresh();
+
+                            dragStart = e.clientY;
+                        });
+
+                $(document).on('mouseup', function () {
+                    dragging = false;
+                })
+
+                setPos(0);
+                refresh();
+            };
+
+            function poll() {
+                $.ajax('poll_task/', {
+                    success: function (data) {
+                        $('#status').html(JSON.stringify(data));
+
+                        if (data !== undefined && data.status == 'uploaded') {
+                            $('#video-link')
+                                    .attr('href', 'http://youtu.be/' + data.id)
+                                    .parent('p')
+                                        .css('display', 'inherit');
+                        }
+                        else {
+                            poll();
+                        }
+                    }
+                });
+            }
+
+            $('#image-upload').ajaxForm({
+                success: function (responseText) {
+                    $('#thumbnail').attr('src', responseText);
+                }
+            });
+            $('#audio-upload').ajaxForm({
+                success: function (responseText) {
+                    $('audio').attr('src', responseText);
+                }
+            });
+            $('#submit').ajaxForm({
+                success: function (xhr) {
+                    poll();
+                }
+            })
+
+        });
+    </script>
+    <title></title>
+</head>
+<body>
+<form class="upload-form" id="image-upload" action="/upload/image/" method="post">
+    {% csrf_token %}
+    <label for="image">Image: </label><input type="file" id="image" name="image"/>
+    <input type="submit"/>
+</form>
+<div id="thumbnail-container" style="position: relative;">
+    <img id="thumbnail"{% if thumbnail %} src="{{ thumbnail }}"{% endif %} />
+
+    <div id="overlay"></div>
+    <div id="cropped"></div>
+</div>
+<form class="upload-form" id="audio-upload" action="/upload/audio/" method="post">
+    {% csrf_token %}
+    <label for="audio">Audio: </label><input type="file" id="audio" name="audio"/>
+    <input type="submit"/>
+</form>
+<audio controls{% if audio %} src="{{ audio }}"{% endif %}></audio>
+<form action="https://accounts.google.com/o/oauth2/auth" method="get" target="_blank">
+    <input type="hidden" name="client_id"
+           value="885924734-5a9ou9e44a2q25g9d1fhcfd4edooq6pp.apps.googleusercontent.com"/>
+    <input type="hidden" name="redirect_uri" value="{{ google_redirect_uri }}"/>
+    <input type="hidden" name="response_type" value="code"/>
+    <input type="hidden" name="scope" value="https://www.googleapis.com/auth/youtube.upload"/>
+    <input type="submit" value="Open Youtube"/>
+</form>
+<form id="submit" action="/submit/">
+    {% csrf_token %}
+    <input type="hidden" name="crop-y" id="crop-y"/>
+    <input type="submit"/>
+</form>
+<p id="status"></p>
+
+<p style="display: none;"><a id="video-link">Your video</a></p>
+</body>
+</html>
